@@ -39,17 +39,17 @@ class Calculator {
     }
 
 public:
-    int calculate(char* s) {
+    int calculate(string s) {
         stack<int> operands;
         stack<char> operators;
         
-        for(int i=0; i<sizeof(s); i++){
+        for(int i=0; i<s.size(); i++){
             if(s[i] == ' ' || s[i]=='\0') continue; 
         
             if(isdigit(s[i])){
                 long num = 0;
             
-                while(i < sizeof(s) && isdigit(s[i])){
+                while(i < s.size() && isdigit(s[i])){
                     num = num * 10 + (s[i] - '0');
                     i++;
                 }

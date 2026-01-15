@@ -29,11 +29,14 @@ int main(int argc,char* argv[]){
         return 1;
     }
     cout<<"Connected to server"<<endl;
+    
+    string mssg;
     char buffer[1024];
     while(true){
         cout<<"Enter message to server: ";
-        cin>>buffer;
-        send(sockFd,buffer,sizeof(buffer),0);
+        getline(cin, mssg);
+        mssg+="\n";
+        send(sockFd,mssg.c_str(),mssg.size(),0);
 
         int n = recv(sockFd,buffer,sizeof(buffer)-1,0);
         if(n<=0){

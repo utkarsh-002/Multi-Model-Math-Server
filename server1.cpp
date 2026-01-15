@@ -54,22 +54,29 @@ int main(int argc, char *argv[]){
             perror("Accept failed");
             return -1;
         }
-        cout<<"Connected with client socket number: "<<clientAddr.sin_port<<endl;
+        cout<<"Connected with client socket number: "<<ntohs(clientAddr.sin_port)<<endl;
         close(sockFd);
-        
+        string input;
         while(true){
             int n=recv(clientSock,buffer,sizeof(buffer)-1,0);
             if(n<=0){
                 cout<<"Client at port: "<<ntohs(clientAddr.sin_port)<<" disconnected!!\n";
                 break;
             }
-            buffer[n] = '\0'; 
-            cout<<"Client socket "<<ntohs(clientAddr.sin_port)<<" sent message: "<<buffer<<endl;
-
-            int ans = calci.calculate(buffer);
-            cout<<"Sending reply: "<<ans<<endl;
-            string sBuffer=to_string(ans);
-            send(clientSock,sBuffer.c_str(),sBuffer.size(),MSG_NOSIGNAL);
+            input+=buffer;
+            size_t pos;
+            while((pos=input.find('\n'))!=string::npos){
+                string expr = input.substr(0,pos);
+                input.erase(0,pos+1);
+                if(expr.empty())
+                    continue;
+                cout<<"Client sent message: "<<expr<<endl; 
+                int ans = calci.calculate(expr);
+                cout<<"Sending reply: "<<ans<<endl;
+                string reply=to_string(ans)+"\n";
+                send(clientSock,reply.c_str(),reply.size(),MSG_NOSIGNAL);   
+            }
+  
         }
         close(clientSock);
     }
