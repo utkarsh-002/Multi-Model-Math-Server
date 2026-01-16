@@ -3,8 +3,8 @@
 #include<netinet/in.h>
 #include<arpa/inet.h>
 #include<iostream>
-#include "calculator.cpp"
 #include<sys/wait.h>
+#include "calculator.h"
 
 using namespace std;
 
@@ -15,7 +15,6 @@ void sigchld_handler(int){
 void serveClient(int clientFd,int port){
     string  mssg,input="";
     char buffer[1024]={0};
-    Calculator calci;
     while(true){
         int n = recv(clientFd,buffer,sizeof(buffer)-1,0);
         if(n<=0){
@@ -31,7 +30,7 @@ void serveClient(int clientFd,int port){
             if(expr.empty())
                 continue;
             cout<<"Client at port: "<<port<<" message:"<<expr<<endl;
-            int ans=calci.calculate(expr);
+            int ans=Calculator::calculate(expr);
             cout<<"Sending reply: "<<ans<<endl;
             mssg = to_string(ans) +"\n";
             send(clientFd,mssg.c_str(),mssg.size(),MSG_NOSIGNAL);
