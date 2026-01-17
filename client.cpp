@@ -44,7 +44,7 @@ int main(int argc,char* argv[]){
             break;
         }
         buffer[n]='\0';
-        cout<<"Server replied: "<<buffer<<endl;   
+        cout<<"Server replied: "<<buffer;   
     }
     
     return 0;
