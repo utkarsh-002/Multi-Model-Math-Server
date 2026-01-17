@@ -10,9 +10,6 @@
 
 using namespace std;
 
-vector<thread> threads;
-vector<thread::id> threadIds;
-
 void serveClient(int clientFd,int port){
     string mssg,input="";
     int n;
@@ -78,10 +75,9 @@ int main(int argc,char* argv[]){
         }
         cout<<"Connected to client at port "<<ntohs(clientAddr.sin_port)<<endl;
         thread t(serveClient,clientFd,ntohs(clientAddr.sin_port));
-        threads.push_back(std::move(t));
+        t.detach();
+
     }
     close(listenFd);
-    for(int i=0;i<threads.size();i++)
-        threads[i].join();
     return 0;
 }
