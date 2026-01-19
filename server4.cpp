@@ -22,7 +22,7 @@ int create_tcp_server(int port){
         return -1;
     }
 
-    int flags = fcntl(listenFd,F_SETFL,0);
+    int flags = fcntl(listenFd,F_GETFL,0);
     if(fcntl(listenFd,F_SETFL,flags | O_NONBLOCK)==-1){
         close(listenFd);
         return -1;
@@ -41,11 +41,13 @@ int create_tcp_server(int port){
     
     if(::bind(listenFd,(struct sockaddr*)&serverAddr,sizeof(serverAddr))<0){
         perror("Bind failed");
+        close(listenFd);
         return -1;
     }
 
     if(listen(listenFd,5)<0){
         perror("listen failed");
+        close(listenFd);
         return -1;
     }
     cout<<"Server started listening on port:"<<port<<endl;
@@ -59,7 +61,7 @@ int accept_client(int listenFd){
 
     int clientFd=accept(listenFd,(struct sockaddr*)&clientAddr,&clientLen);
     if(clientFd!=-1){
-        int flags = fcntl(clientFd,F_SETFL,0);
+        int flags = fcntl(clientFd,F_GETFL,0);
         if(flags==-1) return -1;
         
         if(fcntl(clientFd,F_SETFL,flags | O_NONBLOCK )==-1){
@@ -68,46 +70,54 @@ int accept_client(int listenFd){
         }
         portMap[clientFd]=ntohs(clientAddr.sin_port);
         return clientFd;
-    }else{
-        if(errno==EAGAIN || errno==EWOULDBLOCK){
-            return -1;
-        }
-        else{
-            perror("Could not connect to client");
-            return -1;
-        }
     }
+
+    if(errno !=EAGAIN && errno !=EWOULDBLOCK){
+        perror("Accept failed");
+    }
+    return -1;
 }
 
-void serveClient(int clientFd){
+bool serveClient(int clientFd){
     string mssg,input="";
-    char buffer[1024]={0};
+    char buffer[1024];
+
+    // We must loop until read returns EAGAIN to clear the buffer completely
     while(true){
+
         int n = read(clientFd,buffer,sizeof(buffer)-1);
-        if(n<=0){
-            if(errno==EWOULDBLOCK || errno==EAGAIN){
-                break;
-            }else{
-                cout<<"Client disconnected at port:"<<portMap[clientFd]<<endl;
-                close(clientFd);
-                break;
+
+        if(n>0){
+            buffer[n]='\0';
+            input+=buffer;
+            size_t pos;
+            while((pos=input.find('\n'))!=string::npos){
+                string expr = input.substr(0,pos);
+                input.erase(0,pos+1);
+                if(expr.empty())
+                    continue;
+                cout<<"Client at port: "<<portMap[clientFd]<<" sending mesaage: "<<expr<<endl;
+                int ans = Calculator::calculate(expr);
+                mssg = to_string(ans)+'\n';
+                cout<<"Sending reply: "<<ans<<endl;
+                send(clientFd,mssg.c_str(),mssg.size(),MSG_NOSIGNAL);
             }
         }
-        buffer[n]='\0';
-        input+=buffer;
-        size_t pos;
-        while((pos=input.find('\n'))!=string::npos){
-            string expr = input.substr(0,pos);
-            input.erase(0,pos+1);
-            if(expr.empty())
-                continue;
-            cout<<"Client at port: "<<portMap[clientFd]<<" sending mesaage: "<<expr<<endl;
-            int ans = Calculator::calculate(expr);
-            mssg = to_string(ans)+'\n';
-            cout<<"Sending reply: "<<ans<<endl;
-            send(clientFd,mssg.c_str(),mssg.size(),MSG_NOSIGNAL);
+        else if(n==0){
+            // EOF: Client closed connection
+            cout<<"Client disconnected at port:"<<portMap[clientFd]<<endl;
+            return true;
+        }
+        else{
+            if(errno==EWOULDBLOCK || errno==EAGAIN){
+                break;  // Data finished for now, keep connection alive
+            }else{
+                perror("Read error");
+                return true;    // Error, close connection
+            }
         }
     }
+    return false;   // Connection still alive
 }
 
 int main(int argc,char* argv[]){
@@ -126,37 +136,51 @@ int main(int argc,char* argv[]){
 
     FD_ZERO(&allset);
     FD_SET(serverFd,&allset);
+
     maxFd = serverFd;
 
     while(true){
         rset=allset;
         nready = select(maxFd+1,&rset,NULL,NULL,NULL);
+        
+        if(nready<0){
+            perror("Select error");
+            break;
+        }
 
         if(FD_ISSET(serverFd,&rset)){
-            if(all_connections.size()==FD_SETSIZE){
-                cout<<"Too many clinet!!";
-                return -1;
-            }
-
             int clientFd = accept_client(serverFd);
             if(clientFd!=-1){
-                FD_SET(clientFd,&allset);
-                all_connections.push_back(clientFd);
-                maxFd = max(maxFd,clientFd);
+                if(all_connections.size()>=FD_SETSIZE){
+                    cout<<"Too many clients,rejecting\n";
+                    close(clientFd);
+                }else{
+                    FD_SET(clientFd,&allset);
+                    all_connections.push_back(clientFd);
+                    maxFd = max(maxFd,clientFd);
+                }
             }
             nready--;
-            if(nready==0)
-                continue;
-        }else{
-            for(int i=0;i<all_connections.size();i++){
-                if(FD_ISSET(all_connections[i],&rset)){
-                    nready--;
-                    serveClient(all_connections[i]);
-                }
-                if(nready==0)
-                    break;
+        }
+        
+        for(auto it=all_connections.begin(); it!=all_connections.end();){
+            int sockFd = *it;
+            bool disconnected = false;
+            if(FD_ISSET(sockFd,&rset)){
+                disconnected=serveClient(sockFd);
+                nready--;
+            }
+            if(disconnected){
+                close(sockFd);
+                FD_CLR(sockFd,&allset);
+                portMap.erase(sockFd);
+                it = all_connections.erase(it);
+            }else{
+                it++;
             }
         }
+
+        
     }
 
     close(serverFd);
